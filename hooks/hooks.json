@@ -1,5 +1,17 @@
 {
   "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/sh -lc 'exec /usr/bin/python3 \"$HOME/plugins/handoff-codex/scripts/handoff_check.py\"'",
+            "timeout": 10,
+            "statusMessage": "Checking context before compact"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

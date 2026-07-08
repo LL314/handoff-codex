@@ -5,14 +5,19 @@
 ## 功能
 
 - 通过 Codex `Stop` hook 读取 transcript 中的 token 统计。
-- 当 context token 数达到阈值时，阻止当前轮继续结束。
+- 通过 Codex `PreCompact` hook 在自动压缩前做最后兜底。
+- 默认在自动压缩阈值前 `2000` tokens 触发交接。
 - 提示 Codex 使用 `$handoff-codex` 生成简短交接文档。
 - 默认交接目录为当前项目下的 `work/handoffs/<project-name>/`。
 
 ## 默认配置
 
-- 默认阈值：`200000` tokens
-- 阈值环境变量：`HANDOFF_CODEX_THRESHOLD`
+- 默认自动压缩上限：`200000` tokens
+- 默认提前量：`2000` tokens
+- 默认交接阈值：`198000` tokens
+- 自动压缩上限环境变量：`HANDOFF_CODEX_AUTO_COMPACT_LIMIT`
+- 提前量环境变量：`HANDOFF_CODEX_MARGIN`
+- 显式阈值环境变量：`HANDOFF_CODEX_THRESHOLD`
 - 交接目录根路径环境变量：`HANDOFF_CODEX_DATA`
 - 调试日志环境变量：`HANDOFF_CODEX_DEBUG=1`
 
@@ -45,6 +50,8 @@ Use $handoff-codex to create a handoff for this session.
 
 自动触发时，hook 会要求 Codex 使用 `$handoff-codex` 写交接文档，并提示你在新 Codex App 线程中粘贴恢复 prompt。
 
+`Stop` hook 负责提前触发；`PreCompact` hook 负责在 Codex 已经准备自动压缩时阻止本次压缩。手动 compact 不会被拦截。
+
 ## 文件结构
 
 ```text
@@ -56,4 +63,4 @@ skills/handoff-codex/SKILL.md
 
 ## 注意
 
-这个插件只能在 Codex App 支持插件 hooks 的环境中自动触发。普通 skill 本身不能自动监控 context；自动触发依赖 `Stop` hook。
+这个插件只能在 Codex App 支持插件 hooks 的环境中自动触发。普通 skill 本身不能自动监控 context；自动触发依赖 `Stop` 和 `PreCompact` hook。

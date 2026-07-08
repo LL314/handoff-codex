@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Codex Stop hook for Handoff Codex.
+"""Codex hooks for Handoff Codex.
 
-Reads the hook payload on stdin, inspects the transcript's latest token_count
-event, and blocks the turn with extra instructions when the configured threshold
-is reached.
+Reads hook payloads on stdin, inspects the transcript's latest token_count event,
+and asks Codex to create a handoff before the active context is compacted.
 """
 
 from __future__ import annotations
@@ -14,7 +13,8 @@ from pathlib import Path
 import sys
 
 
-DEFAULT_THRESHOLD = 200_000
+DEFAULT_AUTO_COMPACT_LIMIT = 200_000
+DEFAULT_MARGIN = 2_000
 
 
 def debug(message: str) -> None:
@@ -98,6 +98,42 @@ def handoff_dir(cwd: str | None) -> str:
     return str(data_root / project_name(cwd))
 
 
+def threshold() -> tuple[int, int, int]:
+    compact_limit = env_int("HANDOFF_CODEX_AUTO_COMPACT_LIMIT", DEFAULT_AUTO_COMPACT_LIMIT)
+    margin = env_int("HANDOFF_CODEX_MARGIN", DEFAULT_MARGIN)
+    explicit = os.environ.get("HANDOFF_CODEX_THRESHOLD", "").strip()
+    if explicit:
+        return env_int("HANDOFF_CODEX_THRESHOLD", max(0, compact_limit - margin)), compact_limit, margin
+    return max(0, compact_limit - margin), compact_limit, margin
+
+
+def handoff_reason(payload: dict, tokens: int | None, threshold_tokens: int, compact_limit: int, margin: int, event_name: str) -> str:
+    cwd = payload.get("cwd") or os.getcwd()
+    target_dir = handoff_dir(cwd)
+    session_id = payload.get("session_id") or "unknown"
+    token_line = "Current context tokens: unknown" if tokens is None else f"Current context tokens: {tokens:,}"
+    trigger = payload.get("trigger")
+    trigger_line = f"Compact trigger: {trigger}" if trigger else f"Hook event: {event_name}"
+    return f"""
+[handoff-codex] Create a handoff before Codex compacts this session.
+
+Handoff Codex threshold reached.
+
+{token_line}
+Handoff threshold: {threshold_tokens:,}
+Auto compact limit: {compact_limit:,}
+Safety margin: {margin:,}
+{trigger_line}
+Session ID: {session_id}
+Working directory: {cwd}
+Handoff directory: {target_dir}
+
+Immediately use $handoff-codex to write a concise handoff document in the handoff directory above.
+After writing it, tell the user to start a new Codex App thread and paste the resume prompt from the handoff.
+Do not compact or continue the original task in this overloaded thread unless the user explicitly asks.
+""".strip()
+
+
 def main() -> int:
     debug("hook start")
     try:
@@ -111,30 +147,35 @@ def main() -> int:
         debug("stop_hook_active; skip")
         return 0
 
+    event_name = payload.get("hook_event_name") or "Stop"
     tokens = latest_context_tokens(payload.get("transcript_path"))
-    threshold = env_int("HANDOFF_CODEX_THRESHOLD", DEFAULT_THRESHOLD)
-    debug(f"tokens={tokens} threshold={threshold} transcript={payload.get('transcript_path')}")
-    if tokens is None or tokens < threshold:
+    threshold_tokens, compact_limit, margin = threshold()
+    debug(
+        f"event={event_name} tokens={tokens} threshold={threshold_tokens} "
+        f"compact_limit={compact_limit} margin={margin} trigger={payload.get('trigger')} "
+        f"transcript={payload.get('transcript_path')}"
+    )
+
+    if event_name == "PreCompact":
+        if payload.get("trigger") != "auto":
+            return 0
+        reason = handoff_reason(payload, tokens, threshold_tokens, compact_limit, margin, event_name)
+        print(
+            json.dumps(
+                {
+                    "continue": False,
+                    "stopReason": reason,
+                    "systemMessage": reason,
+                },
+                ensure_ascii=False,
+            )
+        )
         return 0
 
-    cwd = payload.get("cwd") or os.getcwd()
-    target_dir = handoff_dir(cwd)
-    session_id = payload.get("session_id") or "unknown"
-    reason = f"""
-[handoff-codex] Context {tokens:,} >= {threshold:,}; create a handoff before continuing.
+    if tokens is None or tokens < threshold_tokens:
+        return 0
 
-Handoff Codex threshold reached.
-
-Current context tokens: {tokens:,}
-Threshold: {threshold:,}
-Session ID: {session_id}
-Working directory: {cwd}
-Handoff directory: {target_dir}
-
-Immediately use $handoff-codex to write a concise handoff document in the handoff directory above.
-After writing it, tell the user to start a new Codex App thread and paste the resume prompt from the handoff.
-Do not continue the original task in this overloaded thread unless the user explicitly asks.
-""".strip()
+    reason = handoff_reason(payload, tokens, threshold_tokens, compact_limit, margin, event_name)
 
     print(
         json.dumps(

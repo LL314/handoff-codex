@@ -1,13 +1,13 @@
 ---
 name: handoff-codex
-description: Write a concise handoff document for an overloaded Codex App session. Use when a Handoff Codex Stop hook says the context threshold was reached, or when the user asks to create a handoff, resume in a new thread, reduce context, avoid compaction, or preserve current state before continuing elsewhere.
+description: Write a concise handoff document for an overloaded Codex App session. Use when a Handoff Codex Stop or PreCompact hook says the context threshold was reached, or when the user asks to create a handoff, resume in a new thread, reduce context, avoid compaction, or preserve current state before continuing elsewhere.
 ---
 
 # Handoff Codex
 
 Write a small handoff document so a fresh Codex App thread can continue with clean context.
 
-This skill is normally triggered by the plugin's Stop hook after the transcript crosses `HANDOFF_CODEX_THRESHOLD`.
+This skill is normally triggered by the plugin's Stop hook before auto compact, or by the PreCompact hook as a final safety net.
 
 ## Workflow
 
@@ -50,7 +50,7 @@ Continue from the "Next" item first, preserve the listed constraints, and verify
 ## Rules
 
 - Redact secrets, tokens, passwords, cookies, private keys, and sensitive personal data.
-- If invoked from a hook, treat the hook as the source of the handoff directory and token threshold.
+- If invoked from a hook, treat the hook as the source of the handoff directory, token threshold, and compact trigger.
 - Do not edit `~/.codex/config.toml`, `~/.codex/hooks.json`, or plugin files while creating a handoff.
 - Do not run a new Codex session yourself. Tell the user what to paste in a new Codex App thread.
 - If resuming from an existing handoff, read that handoff and continue from its `Next` item.
