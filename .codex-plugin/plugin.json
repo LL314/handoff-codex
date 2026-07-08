@@ -1,0 +1,25 @@
+{
+  "name": "handoff-codex",
+  "version": "0.1.0+codex.20260708081049",
+  "description": "Automatically monitors Codex conversation context and triggers a concise handoff when a token threshold is reached.",
+  "author": {
+    "name": "LL314"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Handoff Codex",
+    "shortDescription": "Auto handoff for long Codex sessions.",
+    "longDescription": "Handoff Codex watches Codex Stop hook token usage and asks Codex to write a compact handoff document before the context gets too large.",
+    "developerName": "LL314",
+    "category": "Productivity",
+    "capabilities": [
+      "Hooks",
+      "Skills"
+    ],
+    "defaultPrompt": [
+      "Use $handoff-codex to create a handoff for this session.",
+      "Explain how Handoff Codex will trigger handoffs."
+    ],
+    "brandColor": "#F97316"
+  }
+}
