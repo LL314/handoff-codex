@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Codex Stop hook for Handoff Codex.
+"""Codex hooks for Handoff Codex.
 
 Reads the hook payload on stdin, inspects the transcript's latest token_count
-event, and blocks the turn with extra instructions when the configured threshold
-is reached.
+event, and defers handoff instructions until the next user prompt so the current
+assistant response can finish normally.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
 import sys
 
 
@@ -98,6 +99,72 @@ def handoff_dir(cwd: str | None) -> str:
     return str(data_root / project_name(cwd))
 
 
+def safe_session_id(session_id: str | None) -> str:
+    raw = session_id or "unknown"
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", raw).strip("-")
+    return safe or "unknown"
+
+
+def pending_path(cwd: str | None, session_id: str | None) -> Path:
+    return Path(handoff_dir(cwd)) / f".handoff-codex-pending-{safe_session_id(session_id)}.json"
+
+
+def write_pending(payload: dict, tokens: int, threshold: int) -> Path:
+    cwd = payload.get("cwd") or os.getcwd()
+    session_id = payload.get("session_id") or "unknown"
+    target_dir = Path(handoff_dir(cwd))
+    target_dir.mkdir(parents=True, exist_ok=True)
+    marker = pending_path(cwd, session_id)
+    marker.write_text(
+        json.dumps(
+            {
+                "tokens": tokens,
+                "threshold": threshold,
+                "session_id": session_id,
+                "cwd": cwd,
+                "handoff_dir": str(target_dir),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return marker
+
+
+def read_pending(payload: dict) -> dict | None:
+    marker = pending_path(payload.get("cwd"), payload.get("session_id"))
+    if not marker.exists():
+        return None
+    try:
+        data = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    data["_marker_path"] = str(marker)
+    return data
+
+
+def pending_context(pending: dict) -> str:
+    tokens = pending.get("tokens", "unknown")
+    threshold = pending.get("threshold", "unknown")
+    handoff_target = pending.get("handoff_dir", "")
+    cwd = pending.get("cwd", "")
+    return f"""
+[handoff-codex] A handoff was deferred until the previous assistant response finished.
+
+Before handling the user's new request, use $handoff-codex to write a concise handoff document.
+
+Current context tokens when threshold was reached: {tokens}
+Threshold: {threshold}
+Working directory: {cwd}
+Handoff directory: {handoff_target}
+
+After writing the handoff, tell the user to start a new Codex App thread and paste the resume prompt from the handoff.
+Do not continue other work in this overloaded thread unless the user explicitly asks after the handoff is complete.
+""".strip()
+
+
 def main() -> int:
     debug("hook start")
     try:
@@ -111,36 +178,48 @@ def main() -> int:
         debug("stop_hook_active; skip")
         return 0
 
+    event_name = payload.get("hook_event_name") or "Stop"
+    if event_name == "UserPromptSubmit":
+        pending = read_pending(payload)
+        if not pending:
+            return 0
+        context = pending_context(pending)
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "UserPromptSubmit",
+                        "additionalContext": context,
+                    },
+                    "systemMessage": "Handoff Codex deferred handoff is pending.",
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
+
     tokens = latest_context_tokens(payload.get("transcript_path"))
     threshold = env_int("HANDOFF_CODEX_THRESHOLD", DEFAULT_THRESHOLD)
-    debug(f"tokens={tokens} threshold={threshold} transcript={payload.get('transcript_path')}")
+    debug(
+        f"event={event_name} tokens={tokens} threshold={threshold} "
+        f"transcript={payload.get('transcript_path')}"
+    )
     if tokens is None or tokens < threshold:
         return 0
 
     cwd = payload.get("cwd") or os.getcwd()
     target_dir = handoff_dir(cwd)
-    session_id = payload.get("session_id") or "unknown"
-    reason = f"""
-[handoff-codex] Context {tokens:,} >= {threshold:,}; create a handoff before continuing.
-
-Handoff Codex threshold reached.
-
-Current context tokens: {tokens:,}
-Threshold: {threshold:,}
-Session ID: {session_id}
-Working directory: {cwd}
-Handoff directory: {target_dir}
-
-Immediately use $handoff-codex to write a concise handoff document in the handoff directory above.
-After writing it, tell the user to start a new Codex App thread and paste the resume prompt from the handoff.
-Do not continue the original task in this overloaded thread unless the user explicitly asks.
-""".strip()
+    marker = write_pending(payload, tokens, threshold)
+    debug(f"pending marker written: {marker}")
 
     print(
         json.dumps(
             {
-                "decision": "block",
-                "reason": reason,
+                "systemMessage": (
+                    f"Handoff Codex deferred handoff: context {tokens:,} >= {threshold:,}. "
+                    f"The current response was allowed to finish. Handoff will be requested on the next user prompt. "
+                    f"Handoff directory: {target_dir}"
+                ),
             },
             ensure_ascii=False,
         )

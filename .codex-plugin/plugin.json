@@ -1,7 +1,7 @@
 {
   "name": "handoff-codex",
-  "version": "0.1.0+codex.20260708081049",
-  "description": "Automatically monitors Codex conversation context and triggers a concise handoff when a token threshold is reached.",
+  "version": "0.1.0+codex.20260710070913",
+  "description": "Automatically monitors Codex conversation context and defers handoff until the current response finishes.",
   "author": {
     "name": "LL314"
   },
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Handoff Codex",
     "shortDescription": "Auto handoff for long Codex sessions.",
-    "longDescription": "Handoff Codex watches Codex Stop hook token usage and asks Codex to write a compact handoff document before the context gets too large.",
+    "longDescription": "Handoff Codex watches Codex Stop hook token usage, lets the current assistant response finish, then injects a handoff instruction on the next user prompt.",
     "developerName": "LL314",
     "category": "Productivity",
     "capabilities": [

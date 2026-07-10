@@ -1,13 +1,13 @@
 ---
 name: handoff-codex
-description: Write a concise handoff document for an overloaded Codex App session. Use when a Handoff Codex Stop hook says the context threshold was reached, or when the user asks to create a handoff, resume in a new thread, reduce context, avoid compaction, or preserve current state before continuing elsewhere.
+description: Write a concise handoff document for an overloaded Codex App session. Use when a Handoff Codex hook says a deferred handoff is pending, or when the user asks to create a handoff, resume in a new thread, reduce context, avoid compaction, or preserve current state before continuing elsewhere.
 ---
 
 # Handoff Codex
 
 Write a small handoff document so a fresh Codex App thread can continue with clean context.
 
-This skill is normally triggered by the plugin's Stop hook after the transcript crosses `HANDOFF_CODEX_THRESHOLD`.
+This skill is normally triggered after the plugin lets the current response finish, then injects a deferred handoff instruction on the next user prompt.
 
 ## Workflow
 

@@ -5,7 +5,8 @@
 ## 功能
 
 - 通过 Codex `Stop` hook 读取 transcript 中的 token 统计。
-- 当 context token 数达到阈值时，阻止当前轮继续结束。
+- 当 context token 数达到阈值时，不打断当前回答，而是记录一个待交接标记。
+- 通过 `UserPromptSubmit` hook 在下一次用户输入时注入交接指令。
 - 提示 Codex 使用 `$handoff-codex` 生成简短交接文档。
 - 默认交接目录为当前项目下的 `work/handoffs/<project-name>/`。
 
@@ -43,7 +44,7 @@ git clone https://github.com/LL314/handoff-codex.git ~/plugins/handoff-codex
 Use $handoff-codex to create a handoff for this session.
 ```
 
-自动触发时，hook 会要求 Codex 使用 `$handoff-codex` 写交接文档，并提示你在新 Codex App 线程中粘贴恢复 prompt。
+自动触发时，当前回答会先正常结束。下一次用户输入时，hook 会要求 Codex 使用 `$handoff-codex` 写交接文档，并提示你在新 Codex App 线程中粘贴恢复 prompt。
 
 ## 文件结构
 
@@ -56,4 +57,4 @@ skills/handoff-codex/SKILL.md
 
 ## 注意
 
-这个插件只能在 Codex App 支持插件 hooks 的环境中自动触发。普通 skill 本身不能自动监控 context；自动触发依赖 `Stop` hook。
+这个插件只能在 Codex App 支持插件 hooks 的环境中自动触发。普通 skill 本身不能自动监控 context；自动触发依赖 `Stop` 和 `UserPromptSubmit` hook。
